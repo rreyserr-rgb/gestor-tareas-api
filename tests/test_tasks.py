@@ -103,3 +103,45 @@ def test_update_task_to_done_then_reject_further_updates():
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Cannot update a completed task"
+
+
+# ---------- Tests para list_tasks_by_status ----------
+
+
+def test_list_tasks_by_status_returns_filtered_tasks():
+    """Filtrar por estado devuelve solo las tareas con ese estado."""
+    client.post("/tasks/", json={"title": "Pendiente 1"})
+    client.post("/tasks/", json={"title": "Pendiente 2"})
+    client.post("/tasks/", json={"title": "En progreso", "status": "in_progress"})
+    client.post("/tasks/", json={"title": "Hecha", "status": "done"})
+
+    response = client.get("/tasks/status/pending")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert all(t["status"] == "pending" for t in data)
+
+    response = client.get("/tasks/status/in_progress")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "En progreso"
+
+    response = client.get("/tasks/status/done")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "Hecha"
+
+
+def test_list_tasks_by_status_returns_empty_list():
+    """Filtrar por un estado sin tareas devuelve una lista vacía."""
+    response = client.get("/tasks/status/done")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_list_tasks_by_status_invalid_status_returns_422():
+    """Un estado no válido debe devolver 422."""
+    response = client.get("/tasks/status/invalid")
+    assert response.status_code == 422
