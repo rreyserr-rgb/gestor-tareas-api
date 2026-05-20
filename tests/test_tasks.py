@@ -145,3 +145,6 @@ def test_list_tasks_by_status_invalid_status_returns_422():
     """Un estado no válido debe devolver 422."""
     response = client.get("/tasks/status/invalid")
     assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail[0]["loc"] == ["path", "status"]
+    assert detail[0]["type"] == "enum"
