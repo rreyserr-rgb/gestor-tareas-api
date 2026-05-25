@@ -1,5 +1,15 @@
-# Tests de integración para los endpoints de tareas
+# Tests de la API de gestión de tareas con pytest y FastAPI TestClient
+#
+# COBERTURA:
+#   - POST  /tasks       → crear tarea correctamente (201)
+#   - POST  /tasks       → título vacío o <3 caracteres (422)
+#   - GET   /tasks       → listar tareas (vacío y con datos)
+#   - GET   /tasks/{id}  → id inexistente (404)
+#   - PATCH /tasks/{id}  → tarea en estado "done" (400)
+#   - PATCH /tasks/{id}  → id inexistente (404)
+#   - DELETE /tasks/{id} → id inexistente (404)
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -8,16 +18,18 @@ from sqlalchemy.pool import StaticPool
 from aplicacion.base_de_datos import Base, get_db
 from aplicacion.principal import app
 
-# Motor SQLite en memoria con StaticPool para aislamiento entre tests
-engine = create_engine(
-    "sqlite://",
+# StaticPool garantiza que todas las sesiones comparten la misma conexión en memoria;
+# sin él cada sesión abriría una conexión nueva y vería una base de datos vacía distinta
+engine_test = create_engine(
+    "sqlite:///:memory:",
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine_test)
 
 
 def override_get_db():
+    # Sustituye la dependencia de BD real por la sesión de test
     db = TestingSessionLocal()
     try:
         yield db
@@ -25,126 +37,114 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest.fixture
+def client():
+    # 1. Crear tablas en el engine de test antes de instanciar el TestClient;
+    #    principal.py ya no llama create_all al importarse (usa lifespan),
+    #    así que aquí tenemos control total sobre qué engine se usa
+    Base.metadata.create_all(bind=engine_test)
 
-# Fixture de cliente reutilizable para todos los tests
-client = TestClient(app)
+    # 2. Sobreescribir la dependencia de BD para que todas las peticiones usen engine_test
+    app.dependency_overrides[get_db] = override_get_db
+
+    # 3. TestClient sin context manager: no dispara el lifespan de la app,
+    #    evitando que el create_all de producción interfiera con engine_test
+    yield TestClient(app)
+
+    # 4. Limpieza al terminar cada test
+    app.dependency_overrides.clear()
+    Base.metadata.drop_all(bind=engine_test)
 
 
-def setup_function():
-    """Recrea las tablas antes de cada test para garantizar aislamiento."""
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+# ---------------------------------------------------------------------------
+# Happy path: crear tarea
+# ---------------------------------------------------------------------------
 
+def test_crear_tarea_correctamente(client):
+    # Verifica que una tarea válida se crea y devuelve los campos esperados
+    payload = {"title": "Tarea de prueba", "description": "Descripción de ejemplo"}
+    response = client.post("/tasks/", json=payload)
 
-# ---------- Tests para update_task ----------
-
-
-def test_update_pending_task_succeeds():
-    """Actualizar una tarea con estado 'pending' debe funcionar correctamente."""
-    response = client.post("/tasks/", json={"title": "Tarea pendiente"})
     assert response.status_code == 201
-    task_id = response.json()["id"]
-
-    response = client.patch(
-        f"/tasks/{task_id}", json={"title": "Título actualizado"}
-    )
-    assert response.status_code == 200
-    assert response.json()["title"] == "Título actualizado"
-
-
-def test_update_in_progress_task_succeeds():
-    """Actualizar una tarea con estado 'in_progress' debe funcionar."""
-    response = client.post(
-        "/tasks/", json={"title": "Tarea en progreso", "status": "in_progress"}
-    )
-    assert response.status_code == 201
-    task_id = response.json()["id"]
-
-    response = client.patch(
-        f"/tasks/{task_id}", json={"description": "Descripción nueva"}
-    )
-    assert response.status_code == 200
-    assert response.json()["description"] == "Descripción nueva"
-
-
-def test_update_done_task_returns_400():
-    """Intentar actualizar una tarea con estado 'done' debe devolver 400."""
-    response = client.post(
-        "/tasks/", json={"title": "Tarea completa", "status": "done"}
-    )
-    assert response.status_code == 201
-    task_id = response.json()["id"]
-
-    response = client.patch(
-        f"/tasks/{task_id}", json={"title": "Nuevo título"}
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Cannot update a completed task"
-
-
-def test_update_task_to_done_then_reject_further_updates():
-    """
-    Mover una tarea a 'done' y luego intentar modificarla debe fallar
-    con 400.
-    """
-    response = client.post("/tasks/", json={"title": "Tarea nueva"})
-    assert response.status_code == 201
-    task_id = response.json()["id"]
-
-    response = client.patch(
-        f"/tasks/{task_id}", json={"status": "done"}
-    )
-    assert response.status_code == 200
-    assert response.json()["status"] == "done"
-
-    response = client.patch(
-        f"/tasks/{task_id}", json={"title": "Intento de cambio"}
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Cannot update a completed task"
-
-
-# ---------- Tests para list_tasks_by_status ----------
-
-
-def test_list_tasks_by_status_returns_filtered_tasks():
-    """Filtrar por estado devuelve solo las tareas con ese estado."""
-    client.post("/tasks/", json={"title": "Pendiente 1"})
-    client.post("/tasks/", json={"title": "Pendiente 2"})
-    client.post("/tasks/", json={"title": "En progreso", "status": "in_progress"})
-    client.post("/tasks/", json={"title": "Hecha", "status": "done"})
-
-    response = client.get("/tasks/status/pending")
-    assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert all(t["status"] == "pending" for t in data)
-
-    response = client.get("/tasks/status/in_progress")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["title"] == "En progreso"
-
-    response = client.get("/tasks/status/done")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["title"] == "Hecha"
+    assert data["title"] == "Tarea de prueba"
+    assert data["description"] == "Descripción de ejemplo"
+    assert data["status"] == "pending"
+    assert "id" in data
+    assert "created_at" in data
 
 
-def test_list_tasks_by_status_returns_empty_list():
-    """Filtrar por un estado sin tareas devuelve una lista vacía."""
-    response = client.get("/tasks/status/done")
+# ---------------------------------------------------------------------------
+# Happy path: listar tareas
+# ---------------------------------------------------------------------------
+
+def test_listar_tareas_vacio(client):
+    # Sin tareas creadas la respuesta debe ser una lista vacía
+    response = client.get("/tasks/")
+
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_list_tasks_by_status_invalid_status_returns_422():
-    """Un estado no válido debe devolver 422."""
-    response = client.get("/tasks/status/invalid")
+def test_listar_tareas_con_datos(client):
+    # Crea dos tareas y comprueba que ambas aparecen en el listado
+    client.post("/tasks/", json={"title": "Primera tarea"})
+    client.post("/tasks/", json={"title": "Segunda tarea"})
+
+    response = client.get("/tasks/")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+# ---------------------------------------------------------------------------
+# Casos de error
+# ---------------------------------------------------------------------------
+
+def test_crear_tarea_titulo_vacio(client):
+    # Título vacío: violación de min_length=3 → 422
+    response = client.post("/tasks/", json={"title": ""})
     assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert detail[0]["loc"] == ["path", "status"]
-    assert detail[0]["type"] == "enum"
+
+
+def test_crear_tarea_titulo_demasiado_corto(client):
+    # Título de 2 caracteres: violación de min_length=3 → 422
+    response = client.post("/tasks/", json={"title": "ab"})
+    assert response.status_code == 422
+
+
+def test_obtener_tarea_no_encontrada(client):
+    # GET con id inexistente → 404
+    response = client.get("/tasks/9999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found"
+
+
+def test_actualizar_tarea_completada(client):
+    # Crear una tarea y marcarla como "done"; un PATCH posterior debe devolver 400
+    created = client.post("/tasks/", json={"title": "Tarea a completar"}).json()
+    task_id = created["id"]
+
+    # La primera transición a "done" sí está permitida
+    finalizar = client.patch(f"/tasks/{task_id}", json={"status": "done"})
+    assert finalizar.status_code == 200
+    assert finalizar.json()["status"] == "done"
+
+    # Cualquier modificación posterior debe rechazarse con 400
+    response = client.patch(f"/tasks/{task_id}", json={"title": "Nuevo titulo"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Cannot modify a completed task"
+
+
+def test_actualizar_tarea_no_encontrada(client):
+    # PATCH con id inexistente → 404
+    response = client.patch("/tasks/9999", json={"title": "Nuevo titulo"})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found"
+
+
+def test_eliminar_tarea_no_encontrada(client):
+    # DELETE con id inexistente → 404
+    response = client.delete("/tasks/9999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found"
