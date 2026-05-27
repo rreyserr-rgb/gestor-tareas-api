@@ -74,6 +74,7 @@ Los tests usan una base de datos SQLite en memoria con `StaticPool` para garanti
 | GET | `/tasks/{id}` | Obtiene una tarea por id |
 | POST | `/tasks/` | Crea una nueva tarea |
 | PATCH | `/tasks/{id}` | Actualiza parcialmente una tarea |
+| DELETE | `/tasks/` | Elimina todas las tareas |
 | DELETE | `/tasks/{id}` | Elimina una tarea |
 
 ## Convenciones de código que Devin debe respetar
