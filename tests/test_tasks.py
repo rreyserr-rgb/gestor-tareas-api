@@ -8,6 +8,8 @@
 #   - PATCH /tasks/{id}  → tarea en estado "done" (400)
 #   - PATCH /tasks/{id}  → id inexistente (404)
 #   - DELETE /tasks/{id} → id inexistente (404)
+#   - DELETE /tasks/     → eliminar todas las tareas (204) y verificar lista vacía
+#   - DELETE /tasks/     → sin tareas existentes (404)
 
 import pytest
 from fastapi.testclient import TestClient
@@ -148,3 +150,33 @@ def test_eliminar_tarea_no_encontrada(client):
     response = client.delete("/tasks/9999")
     assert response.status_code == 404
     assert response.json()["detail"] == "Task not found"
+
+
+# ---------------------------------------------------------------------------
+# Happy path: eliminar todas las tareas
+# ---------------------------------------------------------------------------
+
+def test_eliminar_todas_las_tareas(client):
+    # Crea varias tareas, las elimina de golpe y verifica que la lista quede vacía
+    client.post("/tasks/", json={"title": "Tarea uno"})
+    client.post("/tasks/", json={"title": "Tarea dos"})
+    client.post("/tasks/", json={"title": "Tarea tres"})
+
+    response = client.delete("/tasks/")
+    assert response.status_code == 204
+
+    # Tras el borrado masivo la lista debe estar vacía
+    lista = client.get("/tasks/")
+    assert lista.status_code == 200
+    assert lista.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Caso de error: eliminar todas sin tareas existentes
+# ---------------------------------------------------------------------------
+
+def test_eliminar_todas_sin_tareas(client):
+    # DELETE /tasks/ sin tareas previas → 404
+    response = client.delete("/tasks/")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No tasks to delete"
