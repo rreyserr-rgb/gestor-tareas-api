@@ -25,7 +25,7 @@ def list_tasks_by_status(status: TaskStatus, db: Session = Depends(get_db)):
     return db.query(Task).filter(Task.status == status).all()
 
 
-# Devuelve una tarea por su identificador; 404 si no existe
+# Devuelve una tarea por su identificador; 404 tag not found
 @router.get("/{task_id}", response_model=TaskResponse)
 def get_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
