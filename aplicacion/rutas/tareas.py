@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from aplicacion.base_de_datos import get_db
 from aplicacion.esquemas import TaskCreate, TaskResponse, TaskUpdate
-from aplicacion.modelos import Task, TaskStatus
+from aplicacion.modelos import Task, TaskPriority, TaskStatus
 
 # Router con prefijo /tasks; agrupa todos los endpoints de tareas
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -25,6 +25,12 @@ def list_tasks_by_status(status: TaskStatus, db: Session = Depends(get_db)):
     return db.query(Task).filter(Task.status == status).all()
 
 
+# Devuelve las tareas filtradas por el nivel de prioridad indicado
+@router.get("/priority/{priority}", response_model=List[TaskResponse])
+def list_tasks_by_priority(priority: TaskPriority, db: Session = Depends(get_db)):
+    return db.query(Task).filter(Task.priority == priority).all()
+
+
 # Devuelve una tarea por su identificador; 404 si no existe
 @router.get("/{task_id}", response_model=TaskResponse)
 def get_task(task_id: int, db: Session = Depends(get_db)):
@@ -34,7 +40,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     return task
 
 
-# Crea una nueva tarea y devuelve el recurso creado con código 201
+# Crea una nueva tarea con prioridad por defecto "medium" y devuelve el recurso creado con código 201
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     task = Task(**payload.model_dump())
