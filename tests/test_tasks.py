@@ -5,6 +5,7 @@
 #   - POST  /tasks       → título vacío o <3 caracteres (422)
 #   - GET   /tasks       → listar tareas (vacío y con datos)
 #   - GET   /tasks/{id}  → id inexistente (404)
+#   - PATCH /tasks/{id}  → título con menos de 3 caracteres (422)
 #   - PATCH /tasks/{id}  → tarea en estado "done" (400)
 #   - PATCH /tasks/{id}  → id inexistente (404)
 #   - DELETE /tasks/{id} → id inexistente (404)
@@ -134,6 +135,26 @@ def test_actualizar_tarea_completada(client):
     response = client.patch(f"/tasks/{task_id}", json={"title": "Nuevo titulo"})
     assert response.status_code == 400
     assert response.json()["detail"] == "Cannot modify a completed task"
+
+
+def test_actualizar_tarea_titulo_demasiado_corto(client):
+    # PATCH con título de menos de 3 caracteres → 422
+    created = client.post("/tasks/", json={"title": "Tarea válida"}).json()
+    task_id = created["id"]
+
+    response = client.patch(f"/tasks/{task_id}", json={"title": "ab"})
+    assert response.status_code == 422
+    assert "detail" in response.json()
+
+
+def test_actualizar_tarea_titulo_vacio(client):
+    # PATCH con título vacío → 422
+    created = client.post("/tasks/", json={"title": "Tarea válida"}).json()
+    task_id = created["id"]
+
+    response = client.patch(f"/tasks/{task_id}", json={"title": ""})
+    assert response.status_code == 422
+    assert "detail" in response.json()
 
 
 def test_actualizar_tarea_no_encontrada(client):
