@@ -117,7 +117,7 @@ def test_obtener_tarea_no_encontrada(client):
     # GET con id inexistente → 404
     response = client.get("/tasks/9999")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Task not found"
+    assert response.json()["detail"] == "Tarea no encontrada"
 
 
 def test_actualizar_tarea_completada(client):
