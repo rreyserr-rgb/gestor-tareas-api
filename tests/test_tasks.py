@@ -99,6 +99,94 @@ def test_listar_tareas_con_datos(client):
 
 
 # ---------------------------------------------------------------------------
+# Filtro por estado en list_tasks
+# ---------------------------------------------------------------------------
+
+def test_filtrar_tareas_por_status(client):
+    # Crea tareas con distintos estados y filtra solo las pendientes
+    t1 = client.post("/tasks/", json={"title": "Tarea pendiente"}).json()
+    t2 = client.post("/tasks/", json={"title": "Tarea en progreso"}).json()
+    client.patch(f"/tasks/{t2['id']}", json={"status": "in_progress"})
+
+    response = client.get("/tasks/", params={"status": "pending"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["id"] == t1["id"]
+
+
+def test_filtrar_tareas_por_status_sin_resultados(client):
+    # Si no hay tareas con el estado indicado, devuelve lista vacía
+    client.post("/tasks/", json={"title": "Tarea pendiente"})
+
+    response = client.get("/tasks/", params={"status": "done"})
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_filtrar_tareas_status_invalido(client):
+    # Un estado no válido devuelve 422
+    response = client.get("/tasks/", params={"status": "invalid"})
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Parámetro limit en list_tasks
+# ---------------------------------------------------------------------------
+
+def test_limit_devuelve_cantidad_indicada(client):
+    # Crea 3 tareas y comprueba que limit=2 devuelve solo 2
+    for i in range(3):
+        client.post("/tasks/", json={"title": f"Tarea {i}"})
+
+    response = client.get("/tasks/", params={"limit": 2})
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+def test_limit_mayor_que_total(client):
+    # Si limit supera el total de tareas, devuelve todas las existentes
+    client.post("/tasks/", json={"title": "Única tarea"})
+
+    response = client.get("/tasks/", params={"limit": 100})
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+def test_limit_cero_es_invalido(client):
+    # limit=0 viola la restricción ge=1 → 422
+    response = client.get("/tasks/", params={"limit": 0})
+    assert response.status_code == 422
+
+
+def test_limit_negativo_es_invalido(client):
+    # Un valor negativo viola la restricción ge=1 → 422
+    response = client.get("/tasks/", params={"limit": -1})
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Combinación de status y limit
+# ---------------------------------------------------------------------------
+
+def test_filtrar_por_status_con_limit(client):
+    # Crea 3 tareas pendientes y filtra con limit=2
+    for i in range(3):
+        client.post("/tasks/", json={"title": f"Tarea {i}"})
+
+    response = client.get("/tasks/", params={"status": "pending", "limit": 2})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert all(t["status"] == "pending" for t in data)
+
+
+# ---------------------------------------------------------------------------
 # Casos de error
 # ---------------------------------------------------------------------------
 
