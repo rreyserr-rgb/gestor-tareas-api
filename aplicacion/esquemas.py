@@ -14,6 +14,7 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     status: TaskStatus = TaskStatus.pending
     categoria: Optional[str] = None
+    descripcion: Optional[str] = Field(default=None, max_length=200)
 
 
 # Esquema para actualizar una tarea; todos los campos son opcionales (PATCH parcial)
@@ -22,6 +23,7 @@ class TaskUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[TaskStatus] = None
     categoria: Optional[str] = None
+    descripcion: Optional[str] = Field(default=None, max_length=200)
 
 
 # Esquema de respuesta que devuelve la API; incluye los campos generados por la BD
@@ -31,6 +33,7 @@ class TaskResponse(BaseModel):
     description: Optional[str]
     status: TaskStatus
     categoria: Optional[str]
+    descripcion: Optional[str]
     created_at: datetime
 
     # from_attributes permite construir el esquema desde un objeto ORM de SQLAlchemy
