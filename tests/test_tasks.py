@@ -175,3 +175,41 @@ def test_actualizar_categoria(client):
     response = client.patch(f"/tasks/{task_id}", json={"categoria": "Urgente"})
     assert response.status_code == 200
     assert response.json()["categoria"] == "Urgente"
+
+
+# ---------------------------------------------------------------------------
+# Tests del campo descripcion
+# ---------------------------------------------------------------------------
+
+def test_crear_tarea_con_descripcion(client):
+    # Verifica que se puede crear una tarea con descripcion y se devuelve correctamente
+    payload = {"title": "Tarea con descripcion", "descripcion": "Breve resumen"}
+    response = client.post("/tasks/", json=payload)
+    assert response.status_code == 201
+    assert response.json()["descripcion"] == "Breve resumen"
+
+
+def test_crear_tarea_sin_descripcion(client):
+    # Sin descripcion el campo debe venir como null
+    payload = {"title": "Tarea sin descripcion"}
+    response = client.post("/tasks/", json=payload)
+    assert response.status_code == 201
+    assert response.json()["descripcion"] is None
+
+
+def test_actualizar_descripcion(client):
+    # PATCH permite modificar el campo descripcion
+    created = client.post("/tasks/", json={"title": "Tarea"}).json()
+    task_id = created["id"]
+    response = client.patch(
+        f"/tasks/{task_id}", json={"descripcion": "Actualizada"}
+    )
+    assert response.status_code == 200
+    assert response.json()["descripcion"] == "Actualizada"
+
+
+def test_crear_tarea_descripcion_excede_maximo(client):
+    # descripcion con más de 200 caracteres → 422
+    payload = {"title": "Tarea larga", "descripcion": "x" * 201}
+    response = client.post("/tasks/", json=payload)
+    assert response.status_code == 422
