@@ -175,3 +175,31 @@ def test_actualizar_categoria(client):
     response = client.patch(f"/tasks/{task_id}", json={"categoria": "Urgente"})
     assert response.status_code == 200
     assert response.json()["categoria"] == "Urgente"
+
+
+# ---------------------------------------------------------------------------
+# Tests del parámetro limit en GET /tasks
+# ---------------------------------------------------------------------------
+
+def test_listar_tareas_con_limit(client):
+    # Crea tres tareas y verifica que limit restringe la cantidad devuelta
+    client.post("/tasks/", json={"title": "Tarea uno"})
+    client.post("/tasks/", json={"title": "Tarea dos"})
+    client.post("/tasks/", json={"title": "Tarea tres"})
+
+    response = client.get("/tasks/", params={"limit": 2})
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+
+def test_listar_tareas_sin_limit_devuelve_todas(client):
+    # Sin parámetro limit se devuelven todas las tareas existentes
+    client.post("/tasks/", json={"title": "Tarea uno"})
+    client.post("/tasks/", json={"title": "Tarea dos"})
+    client.post("/tasks/", json={"title": "Tarea tres"})
+
+    response = client.get("/tasks/")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 3
