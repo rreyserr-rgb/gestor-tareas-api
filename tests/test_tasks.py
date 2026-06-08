@@ -7,6 +7,9 @@
 #   - GET   /tasks/{id}  → id inexistente (404)
 #   - PATCH /tasks/{id}  → tarea en estado "done" (400)
 #   - PATCH /tasks/{id}  → id inexistente (404)
+#   - PATCH /tasks/{id}/complete → marcar tarea como done (200)
+#   - PATCH /tasks/{id}/complete → tarea ya completada (400)
+#   - PATCH /tasks/{id}/complete → id inexistente (404)
 #   - DELETE /tasks/{id} → id inexistente (404)
 
 import pytest
@@ -175,3 +178,40 @@ def test_actualizar_categoria(client):
     response = client.patch(f"/tasks/{task_id}", json={"categoria": "Urgente"})
     assert response.status_code == 200
     assert response.json()["categoria"] == "Urgente"
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tasks/{id}/complete
+# ---------------------------------------------------------------------------
+
+def test_completar_tarea_correctamente(client):
+    # Crea una tarea pendiente y la marca como completada mediante el endpoint dedicado
+    created = client.post("/tasks/", json={"title": "Tarea pendiente"}).json()
+    task_id = created["id"]
+
+    response = client.patch(f"/tasks/{task_id}/complete")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "done"
+    assert data["id"] == task_id
+
+
+def test_completar_tarea_ya_completada(client):
+    # Completar dos veces la misma tarea debe devolver 400
+    created = client.post("/tasks/", json={"title": "Tarea doble"}).json()
+    task_id = created["id"]
+
+    client.patch(f"/tasks/{task_id}/complete")
+    response = client.patch(f"/tasks/{task_id}/complete")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Task is already completed"
+
+
+def test_completar_tarea_no_encontrada(client):
+    # PATCH /tasks/9999/complete con id inexistente → 404
+    response = client.patch("/tasks/9999/complete")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found"
