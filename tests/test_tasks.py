@@ -8,6 +8,12 @@
 #   - PATCH /tasks/{id}  → tarea en estado "done" (400)
 #   - PATCH /tasks/{id}  → id inexistente (404)
 #   - DELETE /tasks/{id} → id inexistente (404)
+#   - POST  /tasks       → prioridad por defecto es "medium" (201)
+#   - POST  /tasks       → crear tarea con prioridad explícita (201)
+#   - POST  /tasks       → prioridad inválida (422)
+#   - PATCH /tasks/{id}  → actualizar prioridad (200)
+#   - GET   /tasks/priority/{priority} → filtrar por prioridad (200)
+#   - GET   /tasks/priority/{priority} → prioridad inválida (422)
 
 import pytest
 from fastapi.testclient import TestClient
@@ -175,3 +181,79 @@ def test_actualizar_categoria(client):
     response = client.patch(f"/tasks/{task_id}", json={"categoria": "Urgente"})
     assert response.status_code == 200
     assert response.json()["categoria"] == "Urgente"
+
+
+# ---------------------------------------------------------------------------
+# Prioridad: happy paths
+# ---------------------------------------------------------------------------
+
+def test_prioridad_por_defecto_es_medium(client):
+    # Si no se envía prioridad, el valor por defecto debe ser "medium"
+    response = client.post("/tasks/", json={"title": "Tarea sin prioridad"})
+
+    assert response.status_code == 201
+    assert response.json()["priority"] == "medium"
+
+
+def test_crear_tarea_con_prioridad_explicita(client):
+    # Crear una tarea indicando prioridad "high" explícitamente
+    payload = {"title": "Tarea urgente", "priority": "high"}
+    response = client.post("/tasks/", json=payload)
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["priority"] == "high"
+
+
+def test_crear_tarea_con_prioridad_low(client):
+    # Crear una tarea con prioridad "low"
+    payload = {"title": "Tarea baja prioridad", "priority": "low"}
+    response = client.post("/tasks/", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["priority"] == "low"
+
+
+def test_actualizar_prioridad(client):
+    # Crear una tarea con prioridad "medium" y cambiarla a "high"
+    created = client.post("/tasks/", json={"title": "Tarea a repriorizar"}).json()
+    task_id = created["id"]
+    assert created["priority"] == "medium"
+
+    response = client.patch(f"/tasks/{task_id}", json={"priority": "high"})
+
+    assert response.status_code == 200
+    assert response.json()["priority"] == "high"
+
+
+def test_filtrar_tareas_por_prioridad(client):
+    # Crear tareas con distintas prioridades y filtrar por "high"
+    client.post("/tasks/", json={"title": "Baja", "priority": "low"})
+    client.post("/tasks/", json={"title": "Alta uno", "priority": "high"})
+    client.post("/tasks/", json={"title": "Alta dos", "priority": "high"})
+
+    response = client.get("/tasks/priority/high")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert all(t["priority"] == "high" for t in data)
+
+
+# ---------------------------------------------------------------------------
+# Prioridad: casos de error
+# ---------------------------------------------------------------------------
+
+def test_crear_tarea_con_prioridad_invalida(client):
+    # Prioridad no reconocida → 422
+    payload = {"title": "Tarea inválida", "priority": "urgent"}
+    response = client.post("/tasks/", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_filtrar_por_prioridad_invalida(client):
+    # Valor de prioridad inexistente en la ruta → 422
+    response = client.get("/tasks/priority/critical")
+
+    assert response.status_code == 422
